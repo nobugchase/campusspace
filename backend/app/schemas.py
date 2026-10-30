@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import datetime, time
 
 from pydantic import BaseModel, ConfigDict
 
@@ -58,3 +58,35 @@ class RoomOut(ORM):
     photos: list[PhotoOut]
     equipment: list[RoomEquipmentOut]
     access_rules: list[AccessRuleOut]
+
+class RoomBrief(ORM):
+    id: int
+    number: str
+    name: str
+    requires_approval: bool
+
+
+class SlotOut(BaseModel):
+    start: datetime
+    end: datetime
+    status: str  # free, busy, pending, past
+
+
+class BookingCreate(BaseModel):
+    user_id: int
+    room_id: int
+    starts_at: datetime
+    ends_at: datetime
+    purpose: str | None = None
+    attendees: int | None = None
+
+
+class BookingOut(ORM):
+    id: int
+    starts_at: datetime
+    ends_at: datetime
+    purpose: str | None
+    attendees: int | None
+    status: str
+    created_at: datetime
+    room: RoomBrief
