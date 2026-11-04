@@ -1,0 +1,6 @@
+.room-card { transition: box-shadow 0.2s; }
+.room-card:hover { box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); }
+.room-card-photo { height: 180px; object-fit: cover; }
+.room-main-photo { max-height: 340px; width: 100%; object-fit: cover; }
+.slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 0.5rem; }
+.slot-btn { font-size: 0.9rem; }
