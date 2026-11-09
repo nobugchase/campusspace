@@ -145,9 +145,62 @@ async function init() {
     room = await apiFetch(`/rooms/${roomId}`);
     renderRoomInfo();
     await loadSlots();
+    await loadReviews();
   } catch (error) {
     showRoomError(error.message);
   }
 }
+
+const scoreSelects = document.querySelectorAll(".score-select");
+scoreSelects.forEach((select) => {
+  select.innerHTML = [5, 4, 3, 2, 1].map((n) => `<option value="${n}">${n}</option>`).join("");
+});
+
+async function loadReviews() {
+  const data = await apiFetch(`/rooms/${roomId}/reviews`);
+  const s = data.summary;
+  document.getElementById("rating-summary").textContent = s.count
+    ? `★ ${s.average} (отзывов: ${s.count}) · чистота ${s.cleanliness}, оснащение ${s.equipment}, комфорт ${s.comfort}`
+    : "пока нет оценок";
+  document.getElementById("reviews-list").innerHTML = data.items.length
+    ? data.items
+        .map(
+          (r) => `<div class="list-group-item">
+            <div class="d-flex justify-content-between">
+              <strong>${escapeHtml(r.user.full_name)}</strong>
+              <span class="text-muted small">${formatDateTime(r.created_at)}</span>
+            </div>
+            <div class="small">Чистота ${r.cleanliness} · Оснащение ${r.equipment_score} · Комфорт ${r.comfort}</div>
+            ${r.comment ? `<div>${escapeHtml(r.comment)}</div>` : ""}
+          </div>`
+        )
+        .join("")
+    : '<div class="list-group-item text-muted">Отзывов пока нет.</div>';
+}
+
+document.getElementById("review-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const box = document.getElementById("review-message");
+  try {
+    await apiFetch("/reviews", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: currentUserId(),
+        room_id: Number(roomId),
+        cleanliness: Number(document.getElementById("score-cleanliness").value),
+        equipment_score: Number(document.getElementById("score-equipment").value),
+        comfort: Number(document.getElementById("score-comfort").value),
+        comment: document.getElementById("review-comment").value.trim() || null,
+      }),
+    });
+    box.className = "alert alert-success";
+    box.textContent = "Спасибо, отзыв добавлен.";
+    document.getElementById("review-comment").value = "";
+    await loadReviews();
+  } catch (error) {
+    box.className = "alert alert-danger";
+    box.textContent = error.message;
+  }
+});
 
 init();

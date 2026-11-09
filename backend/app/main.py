@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from datetime import date, datetime, timedelta
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from . import models, schemas
@@ -260,6 +260,89 @@ def read_all_notifications(user_id: int, db: Session = Depends(get_db)):
     )
     db.commit()
     return {"ok": True}
+
+def build_summary(room_id, count, c, e, k):
+    values = [v for v in (c, e, k) if v is not None]
+    return schemas.RatingSummary(
+        room_id=room_id,
+        count=count or 0,
+        average=round(sum(values) / len(values), 1) if values else None,
+        cleanliness=round(c, 1) if c is not None else None,
+        equipment=round(e, 1) if e is not None else None,
+        comfort=round(k, 1) if k is not None else None,
+    )
+
+
+@app.get("/api/ratings", response_model=list[schemas.RatingSummary], tags=["Отзывы"])
+def all_ratings(db: Session = Depends(get_db)):
+    rows = db.execute(
+        select(
+            models.Review.room_id,
+            func.count(models.Review.id),
+            func.avg(models.Review.cleanliness),
+            func.avg(models.Review.equipment_score),
+            func.avg(models.Review.comfort),
+        ).group_by(models.Review.room_id)
+    ).all()
+    return [build_summary(*row) for row in rows]
+
+
+@app.get("/api/rooms/{room_id}/reviews", response_model=schemas.RoomReviewsOut, tags=["Отзывы"])
+def room_reviews(room_id: int, db: Session = Depends(get_db)):
+    if db.get(models.Room, room_id) is None:
+        raise HTTPException(status_code=404, detail="Помещение не найдено")
+    row = db.execute(
+        select(
+            func.count(models.Review.id),
+            func.avg(models.Review.cleanliness),
+            func.avg(models.Review.equipment_score),
+            func.avg(models.Review.comfort),
+        ).where(models.Review.room_id == room_id)
+    ).one()
+    items = db.scalars(
+        select(models.Review)
+        .where(models.Review.room_id == room_id)
+        .order_by(models.Review.created_at.desc())
+    ).all()
+    return schemas.RoomReviewsOut(summary=build_summary(room_id, *row), items=items)
+
+
+@app.post("/api/reviews", response_model=schemas.ReviewOut, status_code=201, tags=["Отзывы"])
+def create_review(data: schemas.ReviewCreate, db: Session = Depends(get_db)):
+    if db.get(models.Room, data.room_id) is None:
+        raise HTTPException(status_code=404, detail="Помещение не найдено")
+    if db.get(models.User, data.user_id) is None:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    for score in (data.cleanliness, data.equipment_score, data.comfort):
+        if not 1 <= score <= 5:
+            raise HTTPException(status_code=400, detail="Оценки должны быть от 1 до 5")
+
+    reviewed_ids = select(models.Review.booking_id).where(
+        models.Review.user_id == data.user_id, models.Review.booking_id.is_not(None)
+    )
+    booking = db.scalars(
+        select(models.Booking).where(
+            models.Booking.user_id == data.user_id,
+            models.Booking.room_id == data.room_id,
+            models.Booking.status == "approved",
+            models.Booking.id.not_in(reviewed_ids),
+        )
+    ).first()
+    if booking is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Отзыв можно оставить после подтверждённой брони этого помещения (по одному отзыву на бронь)",
+        )
+
+    review = models.Review(
+        user_id=data.user_id, room_id=data.room_id, booking_id=booking.id,
+        cleanliness=data.cleanliness, equipment_score=data.equipment_score,
+        comfort=data.comfort, comment=(data.comment or None),
+    )
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+    return review
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

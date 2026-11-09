@@ -122,3 +122,34 @@ class NotificationOut(ORM):
     message: str
     is_read: bool
     created_at: datetime
+
+class ReviewCreate(BaseModel):
+    user_id: int
+    room_id: int
+    cleanliness: int
+    equipment_score: int
+    comfort: int
+    comment: str | None = None
+
+class ReviewOut(ORM):
+    id: int
+    cleanliness: int
+    equipment_score: int
+    comfort: int
+    comment: str | None
+    created_at: datetime
+    user: UserBrief
+
+
+class RatingSummary(BaseModel):
+    room_id: int
+    count: int
+    average: float | None
+    cleanliness: float | None
+    equipment: float | None
+    comfort: float | None
+
+
+class RoomReviewsOut(BaseModel):
+    summary: RatingSummary
+    items: list[ReviewOut]

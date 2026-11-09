@@ -154,6 +154,9 @@ class Review(Base):
     comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
+    user: Mapped[User] = relationship()
+
+
 
 class Notification(Base):
     __tablename__ = "notifications"

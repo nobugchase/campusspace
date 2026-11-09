@@ -64,6 +64,34 @@
         </form>
       </section>
     </div>
+        <section class="mt-4">
+      <h2 class="h5">Отзывы <span id="rating-summary" class="text-muted small"></span></h2>
+      <div id="reviews-list" class="list-group mb-3"></div>
+
+      <form id="review-form" class="card card-body">
+        <h3 class="h6">Оставить отзыв</h3>
+        <div class="row g-3 mb-3">
+          <div class="col-12 col-md-4">
+            <label for="score-cleanliness" class="form-label">Чистота</label>
+            <select id="score-cleanliness" class="form-select score-select"></select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="score-equipment" class="form-label">Оснащение</label>
+            <select id="score-equipment" class="form-select score-select"></select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="score-comfort" class="form-label">Комфорт</label>
+            <select id="score-comfort" class="form-select score-select"></select>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label for="review-comment" class="form-label">Комментарий</label>
+          <textarea id="review-comment" class="form-control" rows="2" maxlength="500"></textarea>
+        </div>
+        <div id="review-message" class="alert d-none"></div>
+        <button type="submit" class="btn btn-primary align-self-start">Отправить отзыв</button>
+      </form>
+    </section>
   </main>
 
   <div class="modal fade" id="confirm-modal" tabindex="-1" aria-labelledby="confirm-title" aria-hidden="true">

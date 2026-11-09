@@ -1,3 +1,4 @@
+let ratingsMap = {};
 const roomsList = document.getElementById("rooms-list");
 const roomsMessage = document.getElementById("rooms-message");
 
@@ -44,6 +45,10 @@ function renderRoom(room) {
   const approval = room.requires_approval
     ? '<span class="badge bg-warning text-dark">Нужно согласование</span>'
     : '<span class="badge bg-success">Мгновенная бронь</span>';
+  const rating = ratingsMap[room.id];
+  const ratingText = rating
+    ? `<span class="badge text-bg-warning">★ ${rating.average} (${rating.count})</span>`
+    : '<span class="text-muted small">Нет оценок</span>';  
   return `
     <div class="col-12 col-md-6 col-lg-4">
       <div class="card room-card h-100">
@@ -53,7 +58,7 @@ function renderRoom(room) {
           <p class="text-muted small mb-2">
             ${escapeHtml(room.building.name)} · ${escapeHtml(room.room_type.name)} · до ${room.capacity} чел.
           </p>
-          <div class="mb-2">${approval}</div>
+          <div class="mb-2">${approval} ${ratingText}</div>
           <div class="d-flex flex-wrap gap-1 mb-3">${badges}</div>
           <a href="room.html?id=${room.id}" class="btn btn-primary mt-auto">Календарь и бронирование</a>
         </div>
@@ -65,7 +70,11 @@ async function loadRooms() {
   roomsMessage.textContent = "Загрузка...";
   try {
     const query = buildQuery();
-    const rooms = await apiFetch("/rooms" + (query ? "?" + query : ""));
+    const [rooms, ratings] = await Promise.all([
+      apiFetch("/rooms" + (query ? "?" + query : "")),
+      apiFetch("/ratings"),
+    ]);
+    ratingsMap = Object.fromEntries(ratings.map((r) => [r.room_id, r]));
     roomsList.innerHTML = rooms.map(renderRoom).join("");
     roomsMessage.textContent = rooms.length ? `Найдено помещений: ${rooms.length}` : "Ничего не найдено. Измените фильтры.";
   } catch (error) {
