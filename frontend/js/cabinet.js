@@ -99,6 +99,51 @@ document.getElementById("read-all-btn").addEventListener("click", async () => {
   await apiFetch(`/notifications/read-all?user_id=${currentUserId()}`, { method: "POST" });
   loadNotifications();
 });
+const WEEKDAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const recurringList = document.getElementById("recurring-list");
 
+function describeRule(rule) {
+  if (rule.frequency === "daily") return "Каждый день";
+  return rule.weekdays.split(",").map((d) => WEEKDAY_NAMES[Number(d) - 1]).join(", ");
+}
+
+async function loadRecurring() {
+  try {
+    const rules = await apiFetch(`/recurring/my?user_id=${currentUserId()}`);
+    recurringList.innerHTML = rules.length
+      ? rules
+          .map(
+            (r) => `
+        <div class="col-12 col-md-6 col-lg-4">
+          <div class="card h-100">
+            <div class="card-body">
+              <h3 class="h6">${escapeHtml(r.room.name)}</h3>
+              <p class="mb-1">${describeRule(r)}, ${r.start_time.slice(0, 5)}–${r.end_time.slice(0, 5)}</p>
+              <p class="mb-2 text-muted small">С ${r.start_date} по ${r.end_date}</p>
+              <button class="btn btn-sm btn-outline-danger cancel-series-btn" data-id="${r.id}">Отменить серию</button>
+            </div>
+          </div>
+        </div>`
+          )
+          .join("")
+      : '<p class="text-muted">Повторяющихся бронирований нет. Их можно создать на странице помещения, отметив «Повторять».</p>';
+  } catch (error) {
+    recurringList.innerHTML = `<p class="text-danger">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+recurringList.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".cancel-series-btn");
+  if (!btn || !confirm("Отменить всю серию? Будущие брони серии будут отменены.")) return;
+  try {
+    const result = await apiFetch(`/recurring/${btn.dataset.id}?user_id=${currentUserId()}`, { method: "DELETE" });
+    showMessage(`Серия отменена, отменено броней: ${result.cancelled}.`, "success");
+    await Promise.all([loadRecurring(), loadBookings(), loadNotifications()]);
+  } catch (error) {
+    showMessage(error.message, "danger");
+  }
+});
+
+loadRecurring();
 loadBookings();
 loadNotifications();

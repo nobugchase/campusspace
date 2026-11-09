@@ -344,5 +344,122 @@ def create_review(data: schemas.ReviewCreate, db: Session = Depends(get_db)):
     db.refresh(review)
     return review
 
+@app.post("/api/recurring", response_model=schemas.RecurringResult, status_code=201,
+          tags=["Повторяющиеся брони"])
+def create_recurring(data: schemas.RecurringCreate, db: Session = Depends(get_db)):
+    room = db.get(models.Room, data.room_id)
+    if room is None or not room.is_active:
+        raise HTTPException(status_code=404, detail="Помещение не найдено")
+    if db.get(models.User, data.user_id) is None:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if data.frequency not in ("daily", "weekly"):
+        raise HTTPException(status_code=400, detail="Периодичность: daily или weekly")
+    if data.frequency == "weekly" and not data.weekdays:
+        raise HTTPException(status_code=400, detail="Выберите дни недели")
+    if any(d < 1 or d > 7 for d in data.weekdays):
+        raise HTTPException(status_code=400, detail="Дни недели: числа от 1 до 7")
+    for t in (data.start_time, data.end_time):
+        if t.minute % 30 != 0 or t.second:
+            raise HTTPException(status_code=400, detail="Время должно быть кратно 30 минутам")
+    if data.end_time <= data.start_time:
+        raise HTTPException(status_code=400, detail="Окончание должно быть позже начала")
+    if data.start_time < room.open_time or data.end_time > room.close_time:
+        raise HTTPException(status_code=400, detail="Вне часов работы помещения")
+    if data.end_date < data.start_date:
+        raise HTTPException(status_code=400, detail="Дата окончания раньше даты начала")
+    if (data.end_date - data.start_date).days > 92:
+        raise HTTPException(status_code=400, detail="Серия не может быть длиннее 3 месяцев")
+    if data.attendees and data.attendees > room.capacity:
+        raise HTTPException(status_code=400, detail=f"Вместимость помещения: {room.capacity}")
+
+    weekdays = sorted(set(data.weekdays))
+    rule = models.RecurringRule(
+        user_id=data.user_id, room_id=room.id, frequency=data.frequency,
+        weekdays=",".join(map(str, weekdays)) if data.frequency == "weekly" else None,
+        start_time=data.start_time, end_time=data.end_time,
+        start_date=data.start_date, end_date=data.end_date,
+    )
+    db.add(rule)
+    db.flush()
+
+    status = "pending" if room.requires_approval else "approved"
+    now = datetime.now()
+    created = 0
+    skipped = []
+    day = data.start_date
+    while day <= data.end_date:
+        if data.frequency == "daily" or day.isoweekday() in weekdays:
+            starts = datetime.combine(day, data.start_time)
+            ends = datetime.combine(day, data.end_time)
+            if starts < now:
+                skipped.append(f"{day:%d.%m.%Y}: время уже прошло")
+            else:
+                conflict = db.scalars(
+                    select(models.Booking).where(
+                        models.Booking.room_id == room.id,
+                        models.Booking.status.in_(ACTIVE_STATUSES),
+                        models.Booking.starts_at < ends,
+                        models.Booking.ends_at > starts,
+                    )
+                ).first()
+                if conflict:
+                    skipped.append(f"{day:%d.%m.%Y}: время занято")
+                else:
+                    db.add(models.Booking(
+                        user_id=data.user_id, room_id=room.id, recurring_id=rule.id,
+                        starts_at=starts, ends_at=ends, purpose=data.purpose,
+                        attendees=data.attendees, status=status,
+                    ))
+                    created += 1
+        day += timedelta(days=1)
+
+    if created == 0:
+        db.rollback()
+        reason = "; ".join(skipped[:3]) or "в выбранный период нет подходящих дней"
+        raise HTTPException(status_code=400, detail="Не создано ни одной брони: " + reason)
+
+    text = "отправлена на согласование" if status == "pending" else "подтверждена"
+    db.add(models.Notification(
+        user_id=data.user_id, type="status_changed",
+        message=f"Серия бронирований {room.name} ({created} шт.) {text}",
+    ))
+    db.commit()
+    db.refresh(rule)
+    return schemas.RecurringResult(rule=rule, created=created, skipped=skipped)
+
+
+@app.get("/api/recurring/my", response_model=list[schemas.RecurringOut], tags=["Повторяющиеся брони"])
+def my_recurring(user_id: int, db: Session = Depends(get_db)):
+    return db.scalars(
+        select(models.RecurringRule)
+        .where(models.RecurringRule.user_id == user_id, models.RecurringRule.is_active.is_(True))
+        .order_by(models.RecurringRule.id.desc())
+    ).all()
+
+
+@app.delete("/api/recurring/{rule_id}", tags=["Повторяющиеся брони"])
+def cancel_recurring(rule_id: int, user_id: int, db: Session = Depends(get_db)):
+    rule = db.get(models.RecurringRule, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Серия не найдена")
+    if rule.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Это чужая серия")
+    rule.is_active = False
+    future = db.scalars(
+        select(models.Booking).where(
+            models.Booking.recurring_id == rule.id,
+            models.Booking.status.in_(ACTIVE_STATUSES),
+            models.Booking.starts_at > datetime.now(),
+        )
+    ).all()
+    for booking in future:
+        booking.status = "cancelled"
+    db.add(models.Notification(
+        user_id=user_id, type="status_changed",
+        message=f"Серия бронирований {rule.room.name} отменена (отменено броней: {len(future)})",
+    ))
+    db.commit()
+    return {"cancelled": len(future)}
+
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

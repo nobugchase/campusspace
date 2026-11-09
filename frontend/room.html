@@ -59,6 +59,26 @@
             <label for="booking-attendees" class="form-label">Количество человек</label>
             <input id="booking-attendees" type="number" min="1" class="form-control" required>
           </div>
+                    <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="repeat-toggle">
+            <label class="form-check-label" for="repeat-toggle">Повторять</label>
+          </div>
+          <div id="repeat-options" class="d-none mb-3">
+            <div class="row g-3">
+              <div class="col-12 col-md-4">
+                <label for="repeat-frequency" class="form-label">Периодичность</label>
+                <select id="repeat-frequency" class="form-select">
+                  <option value="weekly">По дням недели</option>
+                  <option value="daily">Каждый день</option>
+                </select>
+              </div>
+              <div class="col-12 col-md-4">
+                <label for="repeat-until" class="form-label">Повторять до</label>
+                <input id="repeat-until" type="date" class="form-control">
+              </div>
+            </div>
+            <div id="repeat-weekdays" class="d-flex flex-wrap gap-3 mt-3"></div>
+          </div>
           <div id="booking-error" class="alert alert-danger d-none"></div>
           <button type="submit" class="btn btn-primary">Забронировать</button>
         </form>

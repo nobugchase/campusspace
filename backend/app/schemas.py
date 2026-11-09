@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 
 from pydantic import BaseModel, ConfigDict
 
@@ -153,3 +153,33 @@ class RatingSummary(BaseModel):
 class RoomReviewsOut(BaseModel):
     summary: RatingSummary
     items: list[ReviewOut]
+
+class RecurringCreate(BaseModel):
+    user_id: int
+    room_id: int
+    frequency: str  # daily или weekly
+    weekdays: list[int] = []  # 1 = понедельник ... 7 = воскресенье
+    start_time: time
+    end_time: time
+    start_date: date
+    end_date: date
+    purpose: str | None = None
+    attendees: int | None = None
+
+
+class RecurringOut(ORM):
+    id: int
+    room: RoomBrief
+    frequency: str
+    weekdays: str | None
+    start_time: time
+    end_time: time
+    start_date: date
+    end_date: date
+    is_active: bool
+
+
+class RecurringResult(BaseModel):
+    rule: RecurringOut
+    created: int
+    skipped: list[str]

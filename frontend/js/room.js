@@ -120,6 +120,10 @@ bookingForm.addEventListener("submit", async (e) => {
     purpose: document.getElementById("booking-purpose").value.trim(),
     attendees: Number(document.getElementById("booking-attendees").value),
   };
+    if (document.getElementById("repeat-toggle").checked) {
+    await createRecurring(a, b);
+    return;
+  }
   try {
     const booking = await apiFetch("/bookings", { method: "POST", body: JSON.stringify(payload) });
     const statusInfo = STATUS_LABELS[booking.status];
@@ -202,5 +206,66 @@ document.getElementById("review-form").addEventListener("submit", async (e) => {
     box.textContent = error.message;
   }
 });
+const WEEKDAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const repeatToggle = document.getElementById("repeat-toggle");
+const repeatFrequency = document.getElementById("repeat-frequency");
+const repeatWeekdays = document.getElementById("repeat-weekdays");
 
+repeatWeekdays.innerHTML = WEEKDAY_NAMES.map(
+  (name, i) => `
+    <div class="form-check">
+      <input class="form-check-input weekday-check" type="checkbox" value="${i + 1}" id="wd-${i + 1}">
+      <label class="form-check-label" for="wd-${i + 1}">${name}</label>
+    </div>`
+).join("");
+
+function syncRepeat() {
+  const on = repeatToggle.checked;
+  document.getElementById("repeat-options").classList.toggle("d-none", !on);
+  repeatWeekdays.classList.toggle("d-none", repeatFrequency.value === "daily");
+  if (on && !document.querySelector(".weekday-check:checked")) {
+    const js = new Date(dateInput.value + "T00:00:00").getDay(); // 0 = воскресенье
+    document.getElementById(`wd-${js === 0 ? 7 : js}`).checked = true;
+  }
+}
+repeatToggle.addEventListener("change", syncRepeat);
+repeatFrequency.addEventListener("change", syncRepeat);
+
+async function createRecurring(a, b) {
+  const until = document.getElementById("repeat-until").value;
+  if (!until) {
+    bookingError.textContent = "Укажите дату, до которой повторять бронь";
+    bookingError.classList.remove("d-none");
+    return;
+  }
+  const payload = {
+    user_id: currentUserId(),
+    room_id: Number(roomId),
+    frequency: repeatFrequency.value,
+    weekdays: [...document.querySelectorAll(".weekday-check:checked")].map((c) => Number(c.value)),
+    start_time: slots[a].start.slice(11, 19),
+    end_time: slots[b].end.slice(11, 19),
+    start_date: dateInput.value,
+    end_date: until,
+    purpose: document.getElementById("booking-purpose").value.trim(),
+    attendees: Number(document.getElementById("booking-attendees").value),
+  };
+  try {
+    const result = await apiFetch("/recurring", { method: "POST", body: JSON.stringify(payload) });
+    const skipped = result.skipped.length
+      ? `<p class="small text-muted mb-0">Пропущено: ${result.skipped.map(escapeHtml).join("; ")}</p>`
+      : "";
+    document.getElementById("confirm-body").innerHTML = `
+      <p class="mb-1"><strong>${escapeHtml(result.rule.room.name)}</strong></p>
+      <p class="mb-1">Создано броней в серии: ${result.created}</p>
+      ${skipped}`;
+    new bootstrap.Modal(document.getElementById("confirm-modal")).show();
+    bookingForm.reset();
+    syncRepeat();
+    await loadSlots();
+  } catch (error) {
+    bookingError.textContent = error.message;
+    bookingError.classList.remove("d-none");
+  }
+}
 init();

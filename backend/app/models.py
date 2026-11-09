@@ -114,6 +114,8 @@ class RecurringRule(Base):
     end_date: Mapped[date] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    room: Mapped[Room] = relationship()
+
 
 class Booking(Base):
     __tablename__ = "bookings"
