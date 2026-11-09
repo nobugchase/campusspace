@@ -34,6 +34,7 @@ async function loadBookings() {
       (b) => ["pending", "approved"].includes(b.status) && new Date(b.ends_at) > now
     );
     const history = bookings.filter((b) => !active.includes(b));
+        showReminders(active);
     activeList.innerHTML = active.length
       ? active.map((b) => renderBooking(b, true)).join("")
       : '<p class="text-muted">Активных бронирований нет. <a href="index.html">Найти помещение</a></p>';
@@ -58,4 +59,46 @@ activeList.addEventListener("click", async (e) => {
   }
 });
 
+function showReminders(active) {
+  const now = new Date();
+  const soon = active.filter((b) => {
+    const start = new Date(b.starts_at);
+    return b.status === "approved" && start > now && start - now < 24 * 3600 * 1000;
+  });
+  document.getElementById("reminders").innerHTML = soon
+    .map(
+      (b) => `<div class="alert alert-info">Напоминание: ${escapeHtml(b.room.name)}, ${formatDateTime(b.starts_at)}</div>`
+    )
+    .join("");
+}
+
+async function loadNotifications() {
+  const list = document.getElementById("notifications-list");
+  const badge = document.getElementById("unread-badge");
+  try {
+    const items = await apiFetch(`/notifications?user_id=${currentUserId()}`);
+    const unread = items.filter((n) => !n.is_read).length;
+    badge.textContent = unread;
+    badge.classList.toggle("d-none", unread === 0);
+    list.innerHTML = items.length
+      ? items
+          .map(
+            (n) => `<div class="list-group-item ${n.is_read ? "" : "fw-bold"}">
+              ${escapeHtml(n.message)}
+              <div class="small text-muted fw-normal">${formatDateTime(n.created_at)}</div>
+            </div>`
+          )
+          .join("")
+      : '<div class="list-group-item text-muted">Уведомлений нет.</div>';
+  } catch (error) {
+    list.innerHTML = `<div class="list-group-item text-danger">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+document.getElementById("read-all-btn").addEventListener("click", async () => {
+  await apiFetch(`/notifications/read-all?user_id=${currentUserId()}`, { method: "POST" });
+  loadNotifications();
+});
+
 loadBookings();
+loadNotifications();

@@ -64,3 +64,14 @@ function initUserSwitcher() {
 }
 
 document.addEventListener("DOMContentLoaded", initUserSwitcher);
+
+// Ссылка «Заявки» видна только администратору (id = 1)
+document.addEventListener("DOMContentLoaded", () => {
+  const nav = document.querySelector(".navbar-nav");
+  if (nav && currentUserId() === 1) {
+    nav.insertAdjacentHTML(
+      "beforeend",
+      '<li class="nav-item"><a class="nav-link" href="admin.html">Заявки</a></li>'
+    );
+  }
+});

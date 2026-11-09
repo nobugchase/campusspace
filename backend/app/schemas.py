@@ -7,6 +7,8 @@ class ORM(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ---------- Каталог помещений ----------
+
 class BuildingOut(ORM):
     id: int
     name: str
@@ -59,6 +61,9 @@ class RoomOut(ORM):
     equipment: list[RoomEquipmentOut]
     access_rules: list[AccessRuleOut]
 
+
+# ---------- Бронирование ----------
+
 class RoomBrief(ORM):
     id: int
     number: str
@@ -90,3 +95,30 @@ class BookingOut(ORM):
     status: str
     created_at: datetime
     room: RoomBrief
+
+
+# ---------- Администратор и уведомления ----------
+
+class UserBrief(ORM):
+    id: int
+    full_name: str
+    email: str
+
+
+class BookingAdminOut(BookingOut):
+    user: UserBrief
+
+
+class DecisionIn(BaseModel):
+    admin_id: int
+    decision: str  # approved или rejected
+    comment: str | None = None
+
+
+class NotificationOut(ORM):
+    id: int
+    booking_id: int | None
+    type: str
+    message: str
+    is_read: bool
+    created_at: datetime

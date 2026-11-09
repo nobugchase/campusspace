@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from datetime import date, datetime, timedelta
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from . import models, schemas
@@ -196,5 +196,70 @@ def cancel_booking(booking_id: int, user_id: int, db: Session = Depends(get_db))
     db.commit()
     db.refresh(booking)
     return booking
+def require_admin(db: Session, user_id: int):
+    user = db.get(models.User, user_id)
+    if user is None or user.role.name != "admin":
+        raise HTTPException(status_code=403, detail="Нужны права администратора")
+    return user
+
+
+@app.get("/api/admin/bookings", response_model=list[schemas.BookingAdminOut], tags=["Администратор"])
+def admin_bookings(admin_id: int, status: str = "pending", db: Session = Depends(get_db)):
+    require_admin(db, admin_id)
+    return db.scalars(
+        select(models.Booking)
+        .where(models.Booking.status == status)
+        .order_by(models.Booking.starts_at)
+    ).all()
+
+
+@app.post("/api/bookings/{booking_id}/decision", response_model=schemas.BookingAdminOut, tags=["Администратор"])
+def decide_booking(booking_id: int, data: schemas.DecisionIn, db: Session = Depends(get_db)):
+    require_admin(db, data.admin_id)
+    if data.decision not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="Решение: approved или rejected")
+    booking = db.get(models.Booking, booking_id)
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Бронь не найдена")
+    if booking.status != "pending":
+        raise HTTPException(status_code=400, detail="Заявка уже обработана")
+
+    booking.status = data.decision
+    db.add(models.Approval(
+        booking_id=booking.id, admin_id=data.admin_id,
+        decision=data.decision, comment=data.comment,
+    ))
+    verdict = "подтверждена" if data.decision == "approved" else "отклонена"
+    message = f"Заявка на {booking.room.name}, {booking.starts_at:%d.%m.%Y %H:%M}, {verdict}"
+    if data.comment:
+        message += f". Комментарий: {data.comment}"
+    db.add(models.Notification(
+        user_id=booking.user_id, booking_id=booking.id,
+        type="status_changed", message=message[:255],
+    ))
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+@app.get("/api/notifications", response_model=list[schemas.NotificationOut], tags=["Уведомления"])
+def list_notifications(user_id: int, db: Session = Depends(get_db)):
+    return db.scalars(
+        select(models.Notification)
+        .where(models.Notification.user_id == user_id)
+        .order_by(models.Notification.created_at.desc())
+        .limit(50)
+    ).all()
+
+
+@app.post("/api/notifications/read-all", tags=["Уведомления"])
+def read_all_notifications(user_id: int, db: Session = Depends(get_db)):
+    db.execute(
+        update(models.Notification)
+        .where(models.Notification.user_id == user_id, models.Notification.is_read.is_(False))
+        .values(is_read=True)
+    )
+    db.commit()
+    return {"ok": True}
+
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
