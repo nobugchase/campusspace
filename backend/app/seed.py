@@ -2,6 +2,7 @@ from datetime import time
 
 from . import models as m
 from .database import Base, SessionLocal, engine
+from .security import hash_password
 
 
 def run():
@@ -18,11 +19,13 @@ def run():
     # Пароли пока заглушки, настоящее хеширование добавим на шаге авторизации
     db.add_all([
         m.User(role_id=roles["admin"].id, full_name="Администратор Кампуса",
-               email="admin@campus.local", password_hash="TODO"),
+               email="admin@campus.local", password_hash=hash_password("admin123")),
         m.User(role_id=roles["student"].id, full_name="Студент Тестовый",
-               email="student@campus.local", password_hash="TODO", faculty="Информатика"),
+               email="student@campus.local", password_hash=hash_password("student123"),
+               faculty="Информатика"),
         m.User(role_id=roles["teacher"].id, full_name="Преподаватель Тестовый",
-               email="teacher@campus.local", password_hash="TODO", faculty="Информатика"),
+               email="teacher@campus.local", password_hash=hash_password("teacher123"),
+               faculty="Информатика"),
     ])
 
     main_b = m.Building(name="Главный корпус", address="ул. Университетская, 1",

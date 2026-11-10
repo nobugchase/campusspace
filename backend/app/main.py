@@ -1,13 +1,12 @@
 from pathlib import Path
-
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from datetime import date, datetime, timedelta
-from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from . import models, schemas
+from . import models, schemas, security
 from .database import Base, engine, get_db
 
 Base.metadata.create_all(bind=engine)
@@ -460,6 +459,60 @@ def cancel_recurring(rule_id: int, user_id: int, db: Session = Depends(get_db)):
     ))
     db.commit()
     return {"cancelled": len(future)}
+
+def user_out(user: models.User) -> schemas.UserOut:
+    return schemas.UserOut(
+        id=user.id, full_name=user.full_name, email=user.email,
+        faculty=user.faculty, role=user.role.name,
+    )
+
+
+def get_current_user(authorization: str | None = Header(None), db: Session = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Требуется вход")
+    user_id = security.read_token(authorization[7:])
+    user = db.get(models.User, user_id) if user_id else None
+    if user is None:
+        raise HTTPException(status_code=401, detail="Сессия истекла, войдите заново")
+    return user
+
+
+@app.post("/api/auth/register", response_model=schemas.AuthOut, status_code=201, tags=["Авторизация"])
+def register(data: schemas.RegisterIn, db: Session = Depends(get_db)):
+    email = data.email.strip().lower()
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Некорректный email")
+    if len(data.password) < 6:
+        raise HTTPException(status_code=400, detail="Пароль не короче 6 символов")
+    if not data.full_name.strip():
+        raise HTTPException(status_code=400, detail="Укажите имя")
+    if db.scalars(select(models.User).where(models.User.email == email)).first():
+        raise HTTPException(status_code=409, detail="Пользователь с таким email уже существует")
+    role = db.scalars(select(models.Role).where(models.Role.name == "student")).first()
+    user = models.User(
+        role_id=role.id, full_name=data.full_name.strip(), email=email,
+        password_hash=security.hash_password(data.password),
+        faculty=(data.faculty or "").strip() or None,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return schemas.AuthOut(token=security.create_token(user.id), user=user_out(user))
+
+
+@app.post("/api/auth/login", response_model=schemas.AuthOut, tags=["Авторизация"])
+def login(data: schemas.LoginIn, db: Session = Depends(get_db)):
+    user = db.scalars(
+        select(models.User).where(models.User.email == data.email.strip().lower())
+    ).first()
+    if user is None or not security.verify_password(data.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Неверный email или пароль")
+    return schemas.AuthOut(token=security.create_token(user.id), user=user_out(user))
+
+
+@app.get("/api/auth/me", response_model=schemas.UserOut, tags=["Авторизация"])
+def me(user: models.User = Depends(get_current_user)):
+    return user_out(user)
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

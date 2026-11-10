@@ -123,6 +123,9 @@ class NotificationOut(ORM):
     is_read: bool
     created_at: datetime
 
+
+# ---------- Отзывы и рейтинги ----------
+
 class ReviewCreate(BaseModel):
     user_id: int
     room_id: int
@@ -130,6 +133,7 @@ class ReviewCreate(BaseModel):
     equipment_score: int
     comfort: int
     comment: str | None = None
+
 
 class ReviewOut(ORM):
     id: int
@@ -153,6 +157,9 @@ class RatingSummary(BaseModel):
 class RoomReviewsOut(BaseModel):
     summary: RatingSummary
     items: list[ReviewOut]
+
+
+# ---------- Повторяющиеся брони ----------
 
 class RecurringCreate(BaseModel):
     user_id: int
@@ -183,3 +190,30 @@ class RecurringResult(BaseModel):
     rule: RecurringOut
     created: int
     skipped: list[str]
+
+
+# ---------- Авторизация ----------
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+class RegisterIn(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    faculty: str | None = None
+
+
+class UserOut(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    faculty: str | None
+    role: str
+
+
+class AuthOut(BaseModel):
+    token: str
+    user: UserOut
